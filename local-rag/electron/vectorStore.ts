@@ -367,6 +367,10 @@ export class VectorStore {
                 distance: number
             }>
         }
+        const filenameImageRows = findImageRowsByFilenameQuery(db, query, limit)
+        if (filenameImageRows.length) {
+            imageRows = [...imageRows, ...filenameImageRows]
+        }
 
         const merged = mergeRankedResults(query, textSemanticRows, textLexicalRows, imageRows)
 
@@ -948,5 +952,80 @@ function isLikelyVisualQuery(query: string): boolean {
         "read this",
         "ocr",
     ].some((token) => normalized.includes(token))
+}
+
+function findImageRowsByFilenameQuery(
+    db: ReturnType<typeof getDb>,
+    query: string,
+    limit: number
+): Array<{
+    image_id: number
+    document_path: string
+    file_name: string
+    distance: number
+}> {
+    if (!looksLikeImageFilenameQuery(query)) return []
+
+    const needles = query
+        .toLowerCase()
+        .split(/\s+/)
+        .map((token) => token.replace(/^[.]+/, "").replace(/[^a-z0-9._-]/g, "").trim())
+        .filter((token) => token.length >= 2)
+
+    if (!needles.length) return []
+
+    const rows = db.prepare(`
+        SELECT
+            i.id AS image_id,
+            i.path AS document_path,
+            i.file_name AS file_name
+        FROM image_documents i
+        ORDER BY i.indexed_at_ms DESC
+        LIMIT 250
+    `).all() as Array<{
+        image_id: number
+        document_path: string
+        file_name: string
+    }>
+
+    const scored = rows
+        .map((row) => {
+            const haystack = `${row.file_name} ${row.document_path}`.toLowerCase()
+            const score = needles.reduce((acc, needle) => acc + (haystack.includes(needle) ? 1 : 0), 0)
+            if (score === 0) return null
+            return {
+                ...row,
+                // Lower is better in existing ranking; map higher filename match score to smaller distance.
+                distance: 1 / (score + 1),
+                score,
+            }
+        })
+        .filter((item): item is {
+            image_id: number
+            document_path: string
+            file_name: string
+            distance: number
+            score: number
+        } => Boolean(item))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+
+    return scored.map(({ image_id, document_path, file_name, distance }) => ({
+        image_id,
+        document_path,
+        file_name,
+        distance,
+    }))
+}
+
+function looksLikeImageFilenameQuery(query: string): boolean {
+    const normalized = query.toLowerCase().trim()
+    if (!normalized) return false
+    return (
+        normalized.includes(".") ||
+        ["png", "jpg", "jpeg", "gif", "webp", "image", "screenshot", "photo"].some((token) =>
+            normalized.includes(token)
+        )
+    )
 }
 

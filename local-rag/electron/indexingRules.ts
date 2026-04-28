@@ -116,6 +116,8 @@ export class IndexingRules {
         if (DEFAULT_IGNORED_EXTENSIONS.has(extension)) return true;
         // Keep PDFs indexable even when repos ignore them in .gitignore.
         if (extension === ".pdf") return false;
+        // Keep common image files indexable even when repos ignore generated assets.
+        if (IMAGE_FILE_EXTENSIONS.has(extension)) return false;
         if (this.options.indexAllFiles) return false;
 
         const relativePath = this.toRelativePath(resolvedPath);

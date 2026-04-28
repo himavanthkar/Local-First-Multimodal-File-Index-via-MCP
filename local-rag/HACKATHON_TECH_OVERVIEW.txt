@@ -1,0 +1,150 @@
+OBI HACKATHON - ALGORITHMS, EMBEDDING MODELS, AND TECH STACK (ONE-FILE SUMMARY)
+
+1) APP ARCHITECTURE
+- Desktop app: Electron + React + TypeScript
+- Main process manages local AI sidecars, indexing, and DB
+- Renderer process handles chat UI, files UI, vault/apps UI, history, settings
+- Local-first design: data processing and retrieval run on-device
+
+2) CORE ML MODELS (CURRENT CONFIG)
+- Chat LLM (llama.cpp sidecar):
+  - Model file: gemma-4-E2B-it-Q4_K_M.gguf
+  - Runtime: llama-server
+  - Context size: 8192
+- Text embedding model (llama.cpp sidecar):
+  - Model file: nomic-embed-text-v2-moe.Q4_K_M.gguf
+  - Endpoint: /v1/embeddings
+  - Embedding dimension: 768
+  - Pooling: mean
+- Image/text multimodal embedding model:
+  - Model: Xenova/clip-vit-base-patch32
+  - Used for:
+    - Image embeddings (for image retrieval)
+    - Text-to-image query embeddings
+  - Embedding dimension: 512
+- OCR model:
+  - Model: Xenova/trocr-base-printed
+  - Task: image-to-text OCR extraction
+- Object detection model:
+  - Model: Xenova/detr-resnet-50
+  - Task: image object label extraction
+- Captioning and VQA models configured in code:
+  - Caption: Xenova/vit-gpt2-image-captioning
+  - VQA: Xenova/donut-base-finetuned-docvqa
+  - Note: VQA is currently disabled in config; captioning flag currently enabled in code
+
+3) VECTOR + SEARCH STORAGE
+- Database: SQLite (better-sqlite3)
+- Vector extension: sqlite-vec
+- Main tables:
+  - documents, chunks, chunks_fts, chunk_embeddings
+  - image_documents, image_embeddings_clip
+  - gmail_messages, gmail_sync_state
+- FTS5 used for lexical search over chunk content
+
+4) INDEXING PIPELINE (TEXT, CODE, IMAGE)
+- File watcher scans selected folders with indexing rules
+- Rules support modality classification:
+  - text, code, image
+- Text/PDF/code files:
+  - Read content
+  - Chunk content
+  - Embed chunks (768-d text vectors)
+  - Store in SQLite + sqlite-vec + FTS
+- Image files:
+  - Create CLIP image vectors (512-d)
+  - Store image vectors in image_embeddings_clip
+- Incremental behavior:
+  - Uses file mtime to skip unchanged files
+  - Reindex supported
+
+5) PDF HANDLING ALGORITHMS
+- PDF extraction:
+  - Library: pdf-parse
+  - Extract text with PDFParse + getText()
+- Fallback behavior:
+  - If extracted text is weak/empty, metadata text is synthesized from filename/title terms
+  - Keeps PDFs searchable even for low-text or scanned PDFs
+- Skip-rule behavior:
+  - PDF handling bypasses common gitignore-based accidental skips
+
+6) RETRIEVAL ALGORITHM (HYBRID)
+- Query flow:
+  1. Generate text embedding for semantic search
+  2. Run lexical FTS query
+  3. Generate image-query embedding for multimodal retrieval
+  4. Merge ranked lists
+- Rank fusion:
+  - Reciprocal Rank Fusion (RRF-style weighting) across:
+    - text semantic
+    - text lexical
+    - image semantic
+  - Visual-intent queries bias image weight more heavily
+
+7) CHUNKING STRATEGY
+- Default text chunking with overlap
+- Markdown-aware chunking by headings/sections
+- Code-aware chunking by function/class boundaries + fallback chunk slicing
+- Metadata stored per chunk:
+  - section_title
+  - char_start
+  - char_end
+
+8) IMAGE INTELLIGENCE ALGORITHMS
+- CLIP embedding for image retrieval
+- OCR extraction for readable text in images
+- Optional captioning/VQA hooks
+- Object detection returns top labels with thresholding + dedup by label score
+- Caching by file mtime for caption/OCR/object outputs
+
+9) CHAT AUGMENTATION LOGIC
+- Chat prompt is augmented with retrieved context snippets
+- Image-specific routing includes:
+  - explicit filename matching
+  - OCR-aware responses
+  - visual intent prioritization
+- Guardrails:
+  - context size clamps
+  - history trimming
+  - stream cancellation + timeout safety
+
+10) IPC / SIDECAR SERVICES
+- IPC handlers expose:
+  - chat start/status/stream
+  - embedding
+  - vector search
+  - file watcher controls
+  - shell open operations
+  - Gmail indexing operations
+- Sidecars launched with health/readiness polling and robust startup checks
+
+11) GMAIL INDEXING (INTEGRATED)
+- Gmail metadata indexing is wired into the same retrieval architecture
+- Messages are chunked + embedded into the same text retrieval path
+- Sync state and indexed count are tracked
+
+12) UI/UX SYSTEM HIGHLIGHTS
+- Chat history persistence
+- Markdown-style rendering for bold + bullets in chat bubbles
+- Clickable indexed modality stats (Text/Code/Images) in Files screen
+- Focus mode:
+  - hide sidebar and side panels for reduced chat-only view
+  - keyboard shortcuts + persistence
+
+13) MAJOR DEPENDENCIES
+- Electron
+- React + MUI
+- better-sqlite3
+- sqlite-vec
+- @xenova/transformers
+- pdf-parse
+- sharp
+- chokidar
+- tesseract.js (present in deps)
+
+14) CURRENT PRACTICAL LIMITS / NOTES
+- Some HF pipelines can be noisy/heavy in ONNX runtime; toggles are used to keep app stable
+- OCR quality depends on image quality and text legibility
+- Local-first architecture favors privacy and offline operation over cloud-scale throughput
+
+END OF FILE
