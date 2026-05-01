@@ -165,6 +165,37 @@ export class FileWatcher {
         return this.getStatus()
     }
 
+    async indexFiles(filePaths: string[]) {
+        const normalized = Array.from(new Set(filePaths.map((p) => path.resolve(p))))
+        let indexedCount = 0
+        let skippedCount = 0
+        const details: Array<{ path: string; skipped: boolean; reason?: string }> = []
+
+        for (const filePath of normalized) {
+            try {
+                const result = await this.vectorStore.indexFile(filePath)
+                if (result?.skipped) {
+                    skippedCount += 1
+                    details.push({ path: filePath, skipped: true, reason: "reason" in result ? result.reason : "unknown" })
+                } else {
+                    indexedCount += 1
+                    details.push({ path: filePath, skipped: false })
+                }
+            } catch (error) {
+                skippedCount += 1
+                details.push({ path: filePath, skipped: true, reason: "index_error" })
+                console.error("[fileWatcher] manual file index failed:", filePath, error)
+            }
+        }
+
+        return {
+            indexedCount,
+            skippedCount,
+            details,
+            ...this.getStatus(),
+        }
+    }
+
     async stop() {
         if (this.watcher) {
             await this.watcher.close()

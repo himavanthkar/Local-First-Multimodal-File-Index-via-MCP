@@ -118,6 +118,13 @@ declare global {
                     indexCount: number
                     modality: "text" | "code" | "image"
                 }>>
+                skipEvents: (limit?: number) => Promise<Array<{
+                    path: string
+                    fileName: string
+                    reason: string
+                    modality: "text" | "code" | "image" | null
+                    skippedAtMs: number
+                }>>
                 imageEmbeddingStatus: () => Promise<{
                     imageDocCount: number
                     imageEmbeddingCount: number
@@ -214,6 +221,26 @@ declare global {
             pickDirectory: (options?: { includeCodeFiles?: boolean; indexAllFiles?: boolean }, addToExisting?: boolean) => Promise<{
                 canceled: boolean
                 path: string | null
+                status: string
+                rootPath: string | null
+                rootPaths: string[]
+                indexingOptions: { includeCodeFiles: boolean; indexAllFiles: boolean }
+                indexingStats: {
+                    scanned: number
+                    indexed: number
+                    skipped: number
+                    textIndexed: number
+                    codeIndexed: number
+                    imageIndexed: number
+                    lastIndexedAtMs: number | null
+                }
+            }>
+            pickFiles: () => Promise<{
+                canceled: boolean
+                paths: string[]
+                indexedCount: number
+                skippedCount: number
+                details: Array<{ path: string; skipped: boolean; reason?: string }>
                 status: string
                 rootPath: string | null
                 rootPaths: string[]

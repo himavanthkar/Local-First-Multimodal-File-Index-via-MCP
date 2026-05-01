@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld("api", {
             ipcRenderer.invoke("rag:stats"),
         recentIndexedFiles: (limit?: number) =>
             ipcRenderer.invoke("rag:recentIndexedFiles", limit),
+        skipEvents: (limit?: number) =>
+            ipcRenderer.invoke("rag:skipEvents", limit),
         imageEmbeddingStatus: () =>
             ipcRenderer.invoke("rag:imageEmbeddingStatus"),
     },
@@ -100,6 +102,7 @@ contextBridge.exposeInMainWorld("watcher", {
     stop: () => ipcRenderer.invoke("watcher:stop"),
     status: () => ipcRenderer.invoke("watcher:status"),
     pickDirectory: (options?: { includeCodeFiles?: boolean; indexAllFiles?: boolean }, addToExisting?: boolean) => ipcRenderer.invoke("watcher:pickDirectory", options, addToExisting),
+    pickFiles: () => ipcRenderer.invoke("watcher:pickFiles"),
     clearIndex: () => ipcRenderer.invoke("watcher:clearIndex"),
     reindex: () => ipcRenderer.invoke("watcher:reindex"),
 })

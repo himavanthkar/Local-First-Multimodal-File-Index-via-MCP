@@ -39,6 +39,32 @@ export function registerFileWatcherIpc() {
         return { canceled: false, path: selectedPath, ...fileWatcher.getStatus() }
     })
 
+    ipcMain.handle("watcher:pickFiles", async (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender)
+        const result = await dialog.showOpenDialog(win!, {
+            properties: ["openFile", "multiSelections"],
+            title: "Choose files to index",
+        })
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return {
+                canceled: true,
+                paths: [] as string[],
+                ...fileWatcher.getStatus(),
+                indexedCount: 0,
+                skippedCount: 0,
+                details: [] as Array<{ path: string; skipped: boolean; reason?: string }>,
+            }
+        }
+
+        const indexResult = await fileWatcher.indexFiles(result.filePaths)
+        return {
+            canceled: false,
+            paths: result.filePaths,
+            ...indexResult,
+        }
+    })
+
     ipcMain.handle("watcher:clearIndex", async () => {
         return fileWatcher.clearIndex()
     })

@@ -26,6 +26,13 @@ type IndexedFileMeta = {
     indexCount: number;
     modality: "text" | "code" | "image";
 };
+type SkipEvent = {
+    path: string;
+    fileName: string;
+    reason: string;
+    modality: "text" | "code" | "image" | null;
+    skippedAtMs: number;
+};
 
 type FilesScreenProps = {
     onNavigateToChat: (query?: string) => void;
@@ -43,6 +50,7 @@ const FILE_FILTERS: { key: FilterType; label: string; icon: string; exts: string
     { key: 'sheets', label: 'Sheets', icon: 'table_chart', exts: ['xls', 'xlsx', 'csv'] },
     { key: 'text', label: 'Text / MD', icon: 'article', exts: ['txt', 'md', 'markdown'] },
 ];
+const RECENT_INDEXED_PAGE_SIZE = 25;
 
 function getExt(filename: string): string {
     const parts = filename.split('.');
@@ -60,20 +68,25 @@ export default function FilesScreen({ onNavigateToChat }: FilesScreenProps) {
     const [showWatcher, setShowWatcher] = useState(false);
     const [activeFilter, setActiveFilter] = useState<FilterType>('all');
     const [recentIndexedFiles, setRecentIndexedFiles] = useState<IndexedFileMeta[]>([]);
+    const [recentIndexedLimit, setRecentIndexedLimit] = useState(RECENT_INDEXED_PAGE_SIZE);
+    const [skipEvents, setSkipEvents] = useState<SkipEvent[]>([]);
+    const [showSkipLog, setShowSkipLog] = useState(false);
     const [activeStatsFilter, setActiveStatsFilter] = useState<StatsFilter>("all");
 
     const loadStats = useCallback(async () => {
         try {
             const s = await window.api.rag.stats();
             setStats(s);
-            const recent = await window.api.rag.recentIndexedFiles(12);
+            const recent = await window.api.rag.recentIndexedFiles(recentIndexedLimit);
             setRecentIndexedFiles(recent);
+            const recentSkips = await window.api.rag.skipEvents(100);
+            setSkipEvents(recentSkips);
         } catch {
             // ignore
         } finally {
             setStatsLoaded(true);
         }
-    }, []);
+    }, [recentIndexedLimit]);
 
     useEffect(() => {
         loadStats();
@@ -189,12 +202,17 @@ export default function FilesScreen({ onNavigateToChat }: FilesScreenProps) {
                                 { label: 'Text', value: stats!.textIndexed, icon: 'article', color: theme.palette.primary.main, filter: 'text' as const, clickable: true },
                                 { label: 'Code', value: stats!.codeIndexed, icon: 'code', color: '#3178C6', filter: 'code' as const, clickable: true },
                                 { label: 'Images', value: stats!.imageIndexed, icon: 'image', color: '#9C27B0', filter: 'image' as const, clickable: true },
-                                { label: 'Skipped (latest scan)', value: stats!.skipped, icon: 'skip_next', color: theme.palette.text.secondary as string, filter: null, clickable: false },
+                                { label: 'Skipped (latest scan)', value: stats!.skipped, icon: 'skip_next', color: theme.palette.text.secondary as string, filter: null, clickable: true },
                             ].map(({ label, value, icon, color, filter, clickable }) => (
                                 <Box
                                     key={label}
                                     onClick={() => {
-                                        if (!clickable || !filter) return;
+                                        if (!clickable) return;
+                                        if (label.startsWith("Skipped")) {
+                                            setShowSkipLog((prev) => !prev);
+                                            return;
+                                        }
+                                        if (!filter) return;
                                         setActiveStatsFilter((prev) => (prev === filter ? "all" : filter));
                                     }}
                                     sx={{
@@ -249,6 +267,11 @@ export default function FilesScreen({ onNavigateToChat }: FilesScreenProps) {
                                 {activeStatsFilter !== "all" && (
                                     <Typography sx={{ fontSize: '0.68rem', color: theme.palette.text.secondary, mb: 1 }}>
                                         Showing {activeStatsFilter} files
+                                    </Typography>
+                                )}
+                                {activeStatsFilter === "all" && stats && stats.indexed > recentIndexedLimit && (
+                                    <Typography sx={{ fontSize: '0.68rem', color: theme.palette.text.secondary, mb: 1 }}>
+                                        Showing latest {recentIndexedFiles.length} of {stats.indexed.toLocaleString()} indexed files
                                     </Typography>
                                 )}
                                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, maxHeight: 240, overflowY: 'auto', pr: 0.5 }}>
@@ -323,6 +346,99 @@ export default function FilesScreen({ onNavigateToChat }: FilesScreenProps) {
                                         </Typography>
                                     )}
                                 </Box>
+                                {activeStatsFilter === "all" && stats && stats.indexed > recentIndexedLimit && (
+                                    <Box sx={{ mt: 1, display: "flex", gap: 1 }}>
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            onClick={() => setRecentIndexedLimit((prev) => prev + RECENT_INDEXED_PAGE_SIZE)}
+                                        >
+                                            Show more
+                                        </Button>
+                                        {recentIndexedLimit > RECENT_INDEXED_PAGE_SIZE && (
+                                            <Button
+                                                size="small"
+                                                variant="text"
+                                                onClick={() => setRecentIndexedLimit(RECENT_INDEXED_PAGE_SIZE)}
+                                            >
+                                                Reset
+                                            </Button>
+                                        )}
+                                    </Box>
+                                )}
+                            </Box>
+                        )}
+
+                        {showSkipLog && (
+                            <Box
+                                sx={{
+                                    p: 1.25,
+                                    borderRadius: 1.5,
+                                    backgroundColor: theme.palette.surface.mid,
+                                    border: `1px solid ${theme.palette.outline.variant}`,
+                                    mb: 2,
+                                }}
+                            >
+                                <Typography
+                                    sx={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.1em',
+                                        color: theme.palette.text.secondary,
+                                        mb: 1,
+                                    }}
+                                >
+                                    Skip History
+                                </Typography>
+                                {!skipEvents.length ? (
+                                    <Typography sx={{ fontSize: '0.75rem', color: theme.palette.text.secondary }}>
+                                        No skip events recorded yet.
+                                    </Typography>
+                                ) : (
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, maxHeight: 240, overflowY: 'auto', pr: 0.5 }}>
+                                        {skipEvents.map((event) => (
+                                            <Box
+                                                key={`${event.path}-${event.skippedAtMs}-${event.reason}`}
+                                                sx={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    gap: 1,
+                                                    p: 1,
+                                                    borderRadius: 1,
+                                                    border: `1px solid ${theme.palette.outline.variant}`,
+                                                    backgroundColor: theme.palette.surface.low,
+                                                }}
+                                            >
+                                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                                        <Chip
+                                                            size="small"
+                                                            label={(event.modality ?? "unknown").toUpperCase()}
+                                                            sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700 }}
+                                                        />
+                                                        <Chip
+                                                            size="small"
+                                                            color="warning"
+                                                            label={event.reason}
+                                                            sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700 }}
+                                                        />
+                                                        <Typography sx={{ fontSize: '0.78rem', fontWeight: 600 }} noWrap>
+                                                            {event.fileName}
+                                                        </Typography>
+                                                    </Box>
+                                                    <Typography sx={{ fontSize: '0.68rem', color: theme.palette.text.secondary }} noWrap>
+                                                        {event.path}
+                                                    </Typography>
+                                                    <Typography sx={{ fontSize: '0.65rem', color: theme.palette.text.secondary }}>
+                                                        {new Date(event.skippedAtMs).toLocaleString()}
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                        ))}
+                                    </Box>
+                                )}
                             </Box>
                         )}
                     </>
@@ -351,7 +467,7 @@ export default function FilesScreen({ onNavigateToChat }: FilesScreenProps) {
                         >
                             Index Setup
                         </Typography>
-                        <FileWatcherPicker />
+                        <FileWatcherPicker onIndexingUpdated={loadStats} />
                     </Box>
                 )}
 

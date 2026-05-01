@@ -95,11 +95,21 @@ function createSchema(db: Database.Database) {
       last_history_id TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS index_skip_events (
+      id INTEGER PRIMARY KEY,
+      path TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      modality TEXT,
+      skipped_at_ms INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);
     CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);
     CREATE INDEX IF NOT EXISTS idx_image_documents_path ON image_documents(path);
     CREATE INDEX IF NOT EXISTS idx_gmail_messages_path ON gmail_messages(path);
     CREATE INDEX IF NOT EXISTS idx_gmail_messages_internal_date ON gmail_messages(internal_date_ms DESC);
+    CREATE INDEX IF NOT EXISTS idx_index_skip_events_time ON index_skip_events(skipped_at_ms DESC);
 
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
       content,

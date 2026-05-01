@@ -23,6 +23,7 @@ type ChunkWithMeta = {
     charStart: number
     charEnd: number
 }
+const MAX_SKIP_EVENTS = 50_000
 
 export class VectorStore {
     private stats: IndexingStats = {
@@ -58,6 +59,7 @@ export class VectorStore {
             const modality = rules.getFileModality(filePath)
             if (!modality) {
                 skippedCount += 1
+                this.recordSkipEvent(filePath, "unsupported_modality", null)
                 continue
             }
 
@@ -70,7 +72,7 @@ export class VectorStore {
                 }
             } catch (error) {
                 skippedCount += 1
-                this.stats.skipped += 1
+                this.recordSkipEvent(filePath, "index_error", modality ?? null)
                 console.error("[vectorStore] failed indexing file:", filePath, error)
             }
         }
@@ -82,7 +84,7 @@ export class VectorStore {
         this.stats.scanned += 1
         const indexedModality = modality ?? inferModality(filePath)
         if (!indexedModality) {
-            this.stats.skipped += 1
+            this.recordSkipEvent(filePath, "unsupported_modality", null)
             return { skipped: true as const, reason: "unsupported_modality" as const }
         }
         if (indexedModality === "image") {
@@ -104,20 +106,20 @@ export class VectorStore {
             .get(filePath) as { id: number; updated_at_ms: number } | undefined
 
         if (existingDoc && existingDoc.updated_at_ms === updatedAtMs) {
-            this.stats.skipped += 1
+            this.recordSkipEvent(filePath, "unchanged", modality)
             return { skipped: true as const, reason: "unchanged" as const }
         }
 
         const rawText = await safeReadTextFile(filePath)
         const textToIndex = extension === ".pdf" ? buildPdfIndexText(filePath, rawText) : rawText
         if (!textToIndex.trim()) {
-            this.stats.skipped += 1
+            this.recordSkipEvent(filePath, "empty", modality)
             return { skipped: true as const, reason: "empty" as const }
         }
 
         const chunks = chunkTextWithMetadata(filePath, textToIndex, 800, 120)
         if (chunks.length === 0) {
-            this.stats.skipped += 1
+            this.recordSkipEvent(filePath, "no_chunks", modality)
             return { skipped: true as const, reason: "no_chunks" as const }
         }
 
@@ -218,7 +220,7 @@ export class VectorStore {
             .get(filePath) as { id: number; updated_at_ms: number } | undefined
 
         if (existingImage && existingImage.updated_at_ms === updatedAtMs) {
-            this.stats.skipped += 1
+            this.recordSkipEvent(filePath, "unchanged", "image")
             return { skipped: true as const, reason: "unchanged" as const }
         }
 
@@ -226,7 +228,7 @@ export class VectorStore {
         try {
             embedding = await this.embedImage(filePath)
         } catch (error) {
-            this.stats.skipped += 1
+            this.recordSkipEvent(filePath, "image_embedding_failed", "image")
             console.error("[vectorStore] image embedding failed; skipping image:", filePath, error)
             return { skipped: true as const, reason: "image_embedding_failed" as const }
         }
@@ -587,10 +589,57 @@ export class VectorStore {
         }))
     }
 
+    getRecentSkipEvents(limit = 100) {
+        const db = getDb()
+        const safeLimit = Math.max(1, Math.min(500, Math.trunc(limit)))
+        const rows = db.prepare(`
+            SELECT path, file_name, reason, modality, skipped_at_ms
+            FROM index_skip_events
+            ORDER BY skipped_at_ms DESC
+            LIMIT ?
+        `).all(safeLimit) as Array<{
+            path: string
+            file_name: string
+            reason: string
+            modality: string | null
+            skipped_at_ms: number
+        }>
+        return rows.map((row) => ({
+            path: row.path,
+            fileName: row.file_name,
+            reason: row.reason,
+            modality: row.modality as "text" | "code" | "image" | null,
+            skippedAtMs: Number(row.skipped_at_ms ?? 0),
+        }))
+    }
+
     private recordIndexed(modality: IndexedModality) {
         this.stats.lastIndexedAtMs = Date.now()
         // Totals are derived from the DB in getStats() to avoid drift.
         void modality
+    }
+
+    private recordSkipEvent(filePath: string, reason: string, modality: IndexedModality | null) {
+        this.stats.skipped += 1
+        try {
+            const db = getDb()
+            const now = Date.now()
+            db.prepare(`
+                INSERT INTO index_skip_events (path, file_name, reason, modality, skipped_at_ms)
+                VALUES (?, ?, ?, ?, ?)
+            `).run(filePath, path.basename(filePath), reason, modality, now)
+            db.prepare(`
+                DELETE FROM index_skip_events
+                WHERE id NOT IN (
+                    SELECT id
+                    FROM index_skip_events
+                    ORDER BY skipped_at_ms DESC, id DESC
+                    LIMIT ?
+                )
+            `).run(MAX_SKIP_EVENTS)
+        } catch (error) {
+            console.warn("[vectorStore] failed to record skip event:", filePath, reason, error)
+        }
     }
 }
 
@@ -638,6 +687,31 @@ async function safeReadTextFile(filePath: string) {
             }
         } catch (error) {
             console.warn("[vectorStore] failed to extract PDF text; skipping:", filePath, error)
+            return ""
+        }
+    }
+    if (extension === ".xlsx" || extension === ".xls") {
+        try {
+            const xlsxModule = await import("xlsx")
+            const XLSX = (xlsxModule as {
+                readFile: (path: string, opts?: Record<string, unknown>) => {
+                    SheetNames: string[]
+                    Sheets: Record<string, unknown>
+                }
+                utils: { sheet_to_csv: (sheet: unknown, opts?: Record<string, unknown>) => string }
+            })
+            const workbook = XLSX.readFile(filePath, { cellDates: true })
+            const parts: string[] = []
+            for (const sheetName of workbook.SheetNames) {
+                const sheet = workbook.Sheets[sheetName]
+                if (!sheet) continue
+                const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false }).trim()
+                if (!csv) continue
+                parts.push(`Sheet: ${sheetName}\n${csv}`)
+            }
+            return parts.join("\n\n")
+        } catch (error) {
+            console.warn("[vectorStore] failed to extract spreadsheet text; skipping:", filePath, error)
             return ""
         }
     }

@@ -113,6 +113,10 @@ export function registerVectorStoreIpc() {
         return vectorStore.getRecentIndexedFiles(limit)
     })
 
+    ipcMain.handle("rag:skipEvents", async (_event, limit = 100) => {
+        return vectorStore.getRecentSkipEvents(limit)
+    })
+
     ipcMain.handle("rag:imageEmbeddingStatus", async () => {
         return vectorStore.getImageEmbeddingStatus()
     })

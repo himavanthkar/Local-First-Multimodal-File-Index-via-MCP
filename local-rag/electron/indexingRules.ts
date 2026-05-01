@@ -43,6 +43,8 @@ const DEFAULT_IGNORED_EXTENSIONS = new Set([
 
 const TEXT_FILE_EXTENSIONS = new Set([
     ".pdf",
+    ".xlsx",
+    ".xls",
     ".txt",
     ".md",
     ".mdx",

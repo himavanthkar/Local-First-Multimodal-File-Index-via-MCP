@@ -2,12 +2,18 @@ import { Box, Button, CircularProgress, Icon, IconButton, Tooltip, Typography } 
 import { useTheme, alpha } from "@mui/material/styles";
 import { useState } from "react";
 
-function FileWatcherPicker() {
+type FileWatcherPickerProps = {
+    onIndexingUpdated?: () => void;
+};
+
+function FileWatcherPicker({ onIndexingUpdated }: FileWatcherPickerProps) {
     const theme = useTheme();
     const [watchedPaths, setWatchedPaths] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [maintenanceLoading, setMaintenanceLoading] = useState<null | "clear" | "reindex">(null);
     const [error, setError] = useState<string | null>(null);
+    const [fileIndexSummary, setFileIndexSummary] = useState<string | null>(null);
+    const [fileIndexDetails, setFileIndexDetails] = useState<Array<{ path: string; skipped: boolean; reason?: string }>>([]);
     const [stats, setStats] = useState<{
         scanned: number;
         indexed: number;
@@ -21,11 +27,14 @@ function FileWatcherPicker() {
     async function handlePick(addToExisting = false) {
         setLoading(true);
         setError(null);
+        setFileIndexSummary(null);
+        setFileIndexDetails([]);
         try {
             const result = await window.watcher.pickDirectory({ includeCodeFiles: false, indexAllFiles: false }, addToExisting);
             if (!result.canceled && result.path) {
                 setWatchedPaths(result.rootPaths ?? (result.rootPath ? [result.rootPath] : []));
                 setStats(result.indexingStats);
+                onIndexingUpdated?.();
                 setLoading(false);
             } else {
                 setError("Failed to open directory. Please try again.");
@@ -40,9 +49,12 @@ function FileWatcherPicker() {
     async function handleClearIndex() {
         setMaintenanceLoading("clear");
         setError(null);
+        setFileIndexSummary(null);
+        setFileIndexDetails([]);
         try {
             const result = await window.watcher.clearIndex();
             setStats(result.indexingStats);
+            onIndexingUpdated?.();
             if (!result.rootPath) {
                 setWatchedPaths([]);
             }
@@ -56,6 +68,8 @@ function FileWatcherPicker() {
     async function handleReindex() {
         setMaintenanceLoading("reindex");
         setError(null);
+        setFileIndexSummary(null);
+        setFileIndexDetails([]);
         try {
             const result = await window.watcher.reindex();
             if (result.warning === "no_root_path") {
@@ -63,6 +77,7 @@ function FileWatcherPicker() {
             }
             setWatchedPaths(result.rootPaths ?? (result.rootPath ? [result.rootPath] : []));
             setStats(result.indexingStats);
+            onIndexingUpdated?.();
         } catch {
             setError("Reindex failed. Check logs and try again.");
         } finally {
@@ -74,7 +89,32 @@ function FileWatcherPicker() {
         setWatchedPaths([]);
         setLoading(false);
         setError(null);
+        setFileIndexSummary(null);
+        setFileIndexDetails([]);
     };
+
+    async function handlePickFiles() {
+        setLoading(true);
+        setError(null);
+        setFileIndexSummary(null);
+        setFileIndexDetails([]);
+        try {
+            const result = await window.watcher.pickFiles();
+            setStats(result.indexingStats);
+            if (!result.canceled) {
+                setFileIndexSummary(
+                    `Indexed ${result.indexedCount} file${result.indexedCount !== 1 ? "s" : ""}` +
+                    (result.skippedCount ? ` · Skipped ${result.skippedCount}` : "")
+                );
+                setFileIndexDetails(result.details ?? []);
+                onIndexingUpdated?.();
+            }
+        } catch {
+            setError("Failed to index selected files.");
+        } finally {
+            setLoading(false);
+        }
+    }
 
     return (
         <Box>
@@ -131,6 +171,15 @@ function FileWatcherPicker() {
             >
                 Add folder
             </Button>
+            <Button
+                variant="outlined"
+                startIcon={<Icon>upload_file</Icon>}
+                onClick={handlePickFiles}
+                disabled={loading || maintenanceLoading !== null}
+                sx={{ mb: 1.25, ml: 1, fontSize: "0.8rem" }}
+            >
+                Choose files
+            </Button>
 
             <Box sx={{ display: "flex", gap: 1, mb: 1.25, flexWrap: "wrap" }}>
                 <Button
@@ -157,6 +206,28 @@ function FileWatcherPicker() {
             <Typography sx={{ fontSize: '0.76rem', color: theme.palette.text.secondary, mb: 0.5 }}>
                 Using default safe indexing rules (code files off, skip filtering on).
             </Typography>
+
+            {fileIndexSummary && (
+                <Typography sx={{ fontSize: '0.74rem', color: theme.palette.text.secondary, mb: 0.5 }}>
+                    {fileIndexSummary}
+                </Typography>
+            )}
+            {fileIndexDetails.length > 0 && (
+                <Box sx={{ mb: 1, display: "flex", flexDirection: "column", gap: 0.25 }}>
+                    {fileIndexDetails.map((item) => (
+                        <Typography
+                            key={`${item.path}-${item.reason ?? "ok"}`}
+                            sx={{
+                                fontSize: "0.7rem",
+                                color: item.skipped ? theme.palette.warning.main : theme.palette.text.secondary,
+                            }}
+                        >
+                            {item.skipped ? "Skipped" : "Indexed"}: {basename(item.path)}
+                            {item.skipped && item.reason ? ` (${item.reason})` : ""}
+                        </Typography>
+                    ))}
+                </Box>
+            )}
 
             {watchedPaths.length > 0 && (
                 <Box
@@ -207,3 +278,9 @@ function FileWatcherPicker() {
 }
 
 export default FileWatcherPicker;
+
+function basename(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, "/");
+    const parts = normalized.split("/");
+    return parts[parts.length - 1] || filePath;
+}

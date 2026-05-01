@@ -2,13 +2,21 @@
 
 Local-first project context engine for developers: index your code and files, retrieve the most relevant context, and feed only what matters into AI workflows.
 
+## Project Links
+
+- Primary repository: [Personal_Vault](https://github.com/himavanthkar/Personal_Vault)
+- Mirror / showcase repository: [Local-First-Multimodal-File-Index-via-MCP](https://github.com/himavanthkar/Local-First-Multimodal-File-Index-via-MCP)
+- Presentation / storyboard site: [Animated Demo Video Storyboard](https://sadly-camp-78163766.figma.site)
+
 ## Elevator Pitch (3 Sentences)
-Personal Vault is a local RAG desktop app that turns your project files (code, docs, PDFs, images/OCR) into a searchable context layer.  
+
+Personal Vault is a local RAG desktop app that turns your project files (code, docs, PDFs, images/OCR, spreadsheets) into a searchable context layer.  
 Instead of re-sending an entire repo to an assistant each time, it retrieves high-signal chunks and prepares targeted context for tools like Cursor or a local LLM.  
 The result is faster, cheaper, and more private project-aware assistance with better grounding in your actual codebase.
 
 ## 30-Second Demo (Head-to-Head with Cursor)
-Add your demo media here:
+
+Current media references (kept as-is):
 
 - GIF: `docs/demo/head-to-head.gif`
 - Video: `docs/demo/head-to-head.mp4`
@@ -19,18 +27,70 @@ Suggested structure for the clip:
 3. Show speed/quality difference and cited sources from retrieved files.
 
 ## Architecture (Mac-Tier and GX10-Tier Story)
-Add your architecture diagram here:
+
+Current architecture media references (kept as-is):
 
 - Diagram image: `docs/architecture/mac-vs-gx10.png`
 - Optional source: `docs/architecture/mac-vs-gx10.drawio`
 
-Narrative to keep in the README:
+Narrative:
 
 - **Mac-tier (developer laptop):** Electron + React app, local indexing, SQLite + vector search, local OCR/embedding pipeline, private on-device retrieval.
 - **GX10-tier (higher-throughput target):** same retrieval contract, scaled model serving/indexing throughput, larger context windows and concurrent query support.
 - **Shared abstraction:** query-intent routing + context packer layer so both tiers produce compatible context bundles for assistants.
 
+## Core Capabilities
+
+- Multimodal indexing: text, code, images, PDF, XLS/XLSX metadata-text extraction.
+- Hybrid retrieval:
+  - lexical (`FTS5`) + semantic (`sqlite-vec`) + image embedding retrieval.
+- Query intent routing:
+  - image-centric question routing, OCR path for text-in-image requests.
+- Local-first execution:
+  - embeddings, retrieval, and context packing run on-device.
+- Source-aware UX:
+  - indexed file metadata, skip history, per-file unindex controls.
+
+## How Data Flows
+
+1. Ingest files from selected folders or manually picked files.
+2. Normalize and parse file content (text / PDF / spreadsheet / image embedding).
+3. Chunk text-like content.
+4. Embed chunks and store vectors.
+5. Persist metadata + lexical index.
+6. At query time, fuse ranked results and pack a context bundle for the assistant.
+
+## Storage Model (SQLite, Local-First)
+
+Personal Vault uses **SQLite** as local storage, inside the app data directory on your machine.
+
+- It is persistent local storage (not temporary memory).
+- It is free and embedded (no separate DB server installation required).
+- It is ideal for single-user desktop apps with strong local privacy.
+
+### SQLite vs PostgreSQL (quick comparison)
+
+- **SQLite**
+  - embedded file DB
+  - zero admin
+  - great for local desktop apps
+  - limited write concurrency for multi-client server workloads
+- **PostgreSQL**
+  - networked client-server DB
+  - better for multi-user backend services and heavy concurrent writes
+  - requires provisioning / operations
+
+For Obi’s local-first desktop architecture, SQLite is the right default.
+
+## Current Indexed Data Surfaces
+
+- `documents` + `chunks` + `chunks_fts` + `chunk_embeddings` for text/code-like docs
+- `image_documents` + `image_embeddings_clip` for images
+- `gmail_messages` + `gmail_sync_state` for Gmail metadata MVP
+- `index_skip_events` for skip history and diagnostics (with retention policy cap)
+
 ## Research Connection
+
 This project is connected to ongoing research on retrieval quality, context efficiency, and human-AI coding workflows.
 
 - Thesis / write-up: `[Add thesis URL here]`
@@ -42,11 +102,13 @@ Suggested one-liner:
 ## Setup Instructions
 
 ### Prerequisites
+
 - Node.js `^22.13.0`
 - npm
 - macOS or Windows
 
 ### Quick Start (macOS)
+
 1. Clone the repository:
    - `git clone https://github.com/himavanthkar/Personal_Vault.git`
 2. Enter app directory:
@@ -60,21 +122,26 @@ Suggested one-liner:
    - `npm run dev`
 
 ### Build
+
 - `cd local-rag && npm run build`
 
 ### Lint
+
 - `cd local-rag && npm run lint`
 
 ### Notes
+
 - If macOS blocks local binaries (for example `llama-server`), sign/trust the binaries before running.
 - Windows setup for llama.cpp binaries is documented in `local-rag/README.md`.
 
 ## Repo Layout
+
 - `local-rag/src` - renderer UI (React)
 - `local-rag/electron` - Electron main process, indexing, retrieval, vector store
 - `local-rag/resources` - local models and runtime binaries
 
 ## More Documentation
+
 - App setup and platform notes: [`local-rag/README.md`](local-rag/README.md)
 - Focus mode technical notes: [`local-rag/TECHNICAL_NOTES_FOCUS_MODE.md`](local-rag/TECHNICAL_NOTES_FOCUS_MODE.md)
 - Hackathon overview: [`local-rag/HACKATHON_TECH_OVERVIEW.txt`](local-rag/HACKATHON_TECH_OVERVIEW.txt)
@@ -100,6 +167,7 @@ thaT IS OUR MAIN TYOUYURB VIDEO LINK
 
 
 ## Recruiter Snapshot
+
 - Built a local-first AI context system for project-aware development workflows.
 - Implemented hybrid retrieval over mixed file types, including OCR-backed image support.
 - Designed toward assistant handoff: retrieve once, send compact context, avoid repeated full-repo scans.
