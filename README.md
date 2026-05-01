@@ -79,6 +79,26 @@ Suggested one-liner:
 - Focus mode technical notes: [`local-rag/TECHNICAL_NOTES_FOCUS_MODE.md`](local-rag/TECHNICAL_NOTES_FOCUS_MODE.md)
 - Hackathon overview: [`local-rag/HACKATHON_TECH_OVERVIEW.txt`](local-rag/HACKATHON_TECH_OVERVIEW.txt)
 
+
+<img width="806" height="537" alt="gallery" src="https://github.com/user-attachments/assets/aae8caf6-4514-4d5b-8f52-538bb97ffb90" />
+
+this above is architecture 
+
+<img width="1209" height="697" alt="Screenshot 2026-05-01 at 9 40 36 AM" src="https://github.com/user-attachments/assets/ed070acc-bda3-4a8c-bc73-0d78285cb910" />
+
+this above i dont know ill tell u later for now keep it as working product screenshot s
+
+<img width="806" height="513" alt="gallery-2" src="https://github.com/user-attachments/assets/a94f7e4c-bb29-4d18-8ab9-c25fe6a31e35" />
+
+this is main logog maybe keeop it in the front of everytjing 
+
+https://www.youtube.com/watch?v=r7eSFDm4Wd4
+thaT IS OUR MAIN TYOUYURB VIDEO LINK 
+
+
+
+
+
 ## Recruiter Snapshot
 - Built a local-first AI context system for project-aware development workflows.
 - Implemented hybrid retrieval over mixed file types, including OCR-backed image support.
