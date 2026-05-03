@@ -59,22 +59,153 @@ const TEXT_FILE_EXTENSIONS = new Set([
     ".sql",
 ]);
 const IMAGE_FILE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
-const CODE_FILE_EXTENSIONS = new Set([
+
+/** Extensions indexed as code when includeCodeFiles is on (web, mobile, scripts, infra). */
+export const CODE_FILE_EXTENSIONS = new Set([
+    // JavaScript / TypeScript
     ".ts",
     ".tsx",
     ".js",
     ".jsx",
+    ".mjs",
+    ".cjs",
+    // Markup / style / web components
+    ".html",
+    ".htm",
+    ".vue",
+    ".svelte",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less",
+    ".styl",
+    // Systems / app languages
     ".py",
     ".java",
+    ".kt",
+    ".kts",
     ".go",
     ".rs",
     ".c",
     ".cpp",
+    ".cc",
+    ".cxx",
     ".h",
     ".hpp",
+    ".hh",
     ".cs",
+    ".fs",
+    ".fsx",
+    ".vb",
+    ".swift",
+    ".m",
+    ".mm",
+    ".dart",
     ".rb",
+    ".php",
+    ".scala",
+    ".sc",
+    ".clj",
+    ".cljs",
+    ".ex",
+    ".exs",
+    ".erl",
+    ".hrl",
+    ".hs",
+    ".elm",
+    ".lua",
+    ".pl",
+    ".pm",
+    ".r",
+    ".jl",
+    // Shell / automation
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".fish",
+    ".ps1",
+    ".psm1",
+    ".bat",
+    ".cmd",
+    // Config-as-code / data for dev
+    ".graphql",
+    ".gql",
+    ".proto",
+    ".prisma",
+    ".tf",
+    ".tfvars",
+    ".hcl",
+    ".nix",
+    ".cmake",
+    ".bzl",
+    ".star",
+    ".zig",
+    ".nim",
+    ".templ",
 ]);
+
+/**
+ * Code files whose basename must win over TEXT (e.g. .txt / extensionless).
+ * Do not list *.json / *.toml here — those stay normal TEXT indexing.
+ */
+const CODE_BASENAME_OVERRIDES = new Set([
+    "dockerfile",
+    "containerfile",
+    "makefile",
+    "gnumakefile",
+    "cmakelists.txt",
+    "rakefile",
+    "gemfile",
+    "gemfile.lock",
+    "podfile",
+    "vagrantfile",
+    "justfile",
+    "procfile",
+    "jenkinsfile",
+    "bazel.build",
+    "build.bazel",
+    "workspace",
+    "meson.build",
+    "dune",
+    "dune-project",
+    "cargo.lock",
+    "go.mod",
+    "go.sum",
+    "go.work",
+    "go.work.sum",
+    "yarn.lock",
+    "pnpm-workspace.yaml",
+    "poetry.lock",
+    "pipfile.lock",
+    "composer.lock",
+]);
+
+export type ResolveModalityOptions = Pick<Required<IndexingOptions>, "includeCodeFiles" | "indexAllFiles">;
+
+/** Single source of truth for path → modality (same rules as IndexingRules.getFileModality). */
+export function resolveFileModality(filePath: string, options: ResolveModalityOptions): IndexedModality | null {
+    const extension = path.extname(filePath).toLowerCase();
+    const baseLower = path.basename(filePath).toLowerCase();
+
+    if (IMAGE_FILE_EXTENSIONS.has(extension)) return "image";
+
+    if (options.includeCodeFiles) {
+        if (CODE_BASENAME_OVERRIDES.has(baseLower)) return "code";
+        if (CODE_FILE_EXTENSIONS.has(extension)) return "code";
+    }
+
+    if (TEXT_FILE_EXTENSIONS.has(extension)) return "text";
+    if (options.indexAllFiles) return "text";
+    return null;
+}
+
+/** Use code-aware chunking (boundaries) for these paths when includeCodeFiles would index them. */
+export function shouldChunkAsCode(filePath: string): boolean {
+    const extension = path.extname(filePath).toLowerCase();
+    const baseLower = path.basename(filePath).toLowerCase();
+    if (CODE_BASENAME_OVERRIDES.has(baseLower)) return true;
+    return CODE_FILE_EXTENSIONS.has(extension);
+}
 
 export type IndexedModality = "text" | "image" | "code";
 export type IndexingOptions = {
@@ -128,12 +259,7 @@ export class IndexingRules {
     }
 
     getFileModality(filePath: string): IndexedModality | null {
-        const extension = path.extname(filePath).toLowerCase();
-        if (TEXT_FILE_EXTENSIONS.has(extension)) return "text";
-        if (this.options.includeCodeFiles && CODE_FILE_EXTENSIONS.has(extension)) return "code";
-        if (IMAGE_FILE_EXTENSIONS.has(extension)) return "image";
-        if (this.options.indexAllFiles) return "text";
-        return null;
+        return resolveFileModality(filePath, this.options);
     }
 
     private toRelativePath(targetPath: string): string {

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Box, Button, Icon, IconButton, Typography } from "@mui/material";
+import { Box, Button, Icon, IconButton, Tooltip, Typography } from "@mui/material";
 import { useTheme, alpha } from "@mui/material/styles";
 import type { SearchResult } from "../../types/global";
 import FileResultCard from "./FileResultCard";
+import { packContext } from "../../utils/contextPacker";
 
 type FileResultsPanelProps = {
     results: SearchResult[];
@@ -23,9 +24,26 @@ export default function FileResultsPanel({
 }: FileResultsPanelProps) {
     const theme = useTheme();
     const [showAll, setShowAll] = useState(false);
+    const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
 
     const displayed = showAll ? results : results.slice(0, TOP_N);
     const hiddenCount = results.length - TOP_N;
+
+    const handleCopyContext = async () => {
+        if (!results.length) return;
+        const { markdown } = packContext(results, {
+            maxCharsPerItem: 1200,
+            maxTotalChars: 12000,
+        });
+        if (!markdown) return;
+        try {
+            await navigator.clipboard.writeText(markdown);
+            setCopyState("copied");
+        } catch {
+            setCopyState("error");
+        }
+        setTimeout(() => setCopyState("idle"), 1500);
+    };
 
     return (
         <Box
@@ -77,11 +95,35 @@ export default function FileResultsPanel({
                     </Box>
                 </Box>
 
-                {onClose && (
-                    <IconButton size="small" onClick={onClose} sx={{ p: 0.5 }}>
-                        <Icon sx={{ fontSize: 16 }}>close</Icon>
-                    </IconButton>
-                )}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                    <Tooltip
+                        title={
+                            copyState === "copied"
+                                ? "Copied! Paste into Cursor or any agent."
+                                : copyState === "error"
+                                    ? "Clipboard unavailable"
+                                    : "Copy as Cursor context"
+                        }
+                    >
+                        <span>
+                            <IconButton
+                                size="small"
+                                onClick={handleCopyContext}
+                                disabled={!results.length}
+                                sx={{ p: 0.5 }}
+                            >
+                                <Icon sx={{ fontSize: 16 }}>
+                                    {copyState === "copied" ? "check" : "content_copy"}
+                                </Icon>
+                            </IconButton>
+                        </span>
+                    </Tooltip>
+                    {onClose && (
+                        <IconButton size="small" onClick={onClose} sx={{ p: 0.5 }}>
+                            <Icon sx={{ fontSize: 16 }}>close</Icon>
+                        </IconButton>
+                    )}
+                </Box>
             </Box>
 
             {/* File list */}

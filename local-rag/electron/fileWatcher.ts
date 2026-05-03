@@ -14,7 +14,7 @@ export class FileWatcher {
     private rootPaths: string[] = []
     private status: SidecarStatus = "stopped"
     private indexingRulesByRoot = new Map<string, IndexingRules>();
-    private indexingOptions: Required<IndexingOptions> = { includeCodeFiles: false, indexAllFiles: false };
+    private indexingOptions: Required<IndexingOptions> = { includeCodeFiles: true, indexAllFiles: false };
 
     constructor(private readonly vectorStore: VectorStore) { }
 
@@ -40,7 +40,7 @@ export class FileWatcher {
         this.status = "starting"
         this.rootPaths = normalizedRoots
         this.indexingOptions = {
-            includeCodeFiles: options.includeCodeFiles ?? false,
+            includeCodeFiles: options.includeCodeFiles ?? true,
             indexAllFiles: options.indexAllFiles ?? false,
         };
         this.indexingRulesByRoot.clear()

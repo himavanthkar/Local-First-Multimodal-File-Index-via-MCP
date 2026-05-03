@@ -15,6 +15,8 @@ import HistoryScreen from "./components/screens/HistoryScreen.tsx";
 import SettingsScreen from "./components/screens/SettingsScreen";
 import PrivacyAboutScreen from "./components/screens/PrivacyAboutScreen";
 
+import { packForChatPrefix } from "./utils/contextPacker";
+
 const NAV_LABELS: Record<NavKey, string> = {
     home: 'Home',
     chat: 'Chat',
@@ -500,32 +502,10 @@ function App({ selectedTheme, onToggleTheme }: AppProps) {
     };
 
     const buildRagContextPrefix = (results: SearchResult[]): string => {
-        if (!results.length) return "";
-
-        const context = results
-            .map((r, i) => {
-                const safeContent = clampText(
-                    sanitizeForPrompt(r.content ?? ""),
-                    MAX_CHARS_PER_RAG_RESULT
-                );
-                return [
-                    `Source ${i + 1}: ${r.fileName}`,
-                    `Path: ${r.documentPath}`,
-                    `Content: ${safeContent}`,
-                ].join("\n");
-            })
-            .join("\n\n---\n\n");
-
-        const clampedContext = clampText(context, MAX_RAG_PREFIX_CHARS);
-
-        return (
-            "Use the retrieved context below to answer the question. " +
-            "Prefer this context when relevant; if image captions are included, treat them as visual evidence. " +
-            "If OCR lines are included, treat them as text extracted from images. " +
-            "Say plainly if context is insufficient.\n\n" +
-            clampedContext +
-            "\n\n---\n\nQuestion: "
-        );
+        return packForChatPrefix(results, {
+            maxCharsPerItem: MAX_CHARS_PER_RAG_RESULT,
+            maxTotalChars: MAX_RAG_PREFIX_CHARS,
+        });
     };
 
     // Navigate to chat and optionally pre-fill the input

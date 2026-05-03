@@ -51,6 +51,25 @@ Narrative:
 - Source-aware UX:
   - indexed file metadata, skip history, per-file unindex controls.
 
+## Roadmap (Currently Implementing)
+
+### Obi → Cursor context handoff
+Status: v1 shipped (clipboard + standalone MCP server). Vector-aware MCP and embedded HTTP transport still in design.
+
+Goal: let Cursor (and other IDE agents) request a compact, ranked context bundle from Obi over a stable contract, instead of re-scanning the repo every prompt.
+
+Pieces in place:
+- **Context packer** (`local-rag/src/utils/contextPacker.ts`) turns top-K `SearchResult` chunks into a budgeted bundle. Per-modality formatting: text/code includes content, image items expose absolute path so the agent can attach the file itself.
+- **Copy as Cursor context** button in the chat retrieval panel writes the packed Markdown to the clipboard — works with any agent that accepts pasted context.
+- **Standalone MCP server** (`local-rag/mcp-server/`) — stdio transport, exposes `obi_search(query, limit?)` to Cursor / Claude Desktop. Reads the same `app.db` Obi writes to (lexical FTS + filename match in v1; vector search lives in the Obi app for now). See [`local-rag/mcp-server/README.md`](local-rag/mcp-server/README.md) for `~/.cursor/mcp.json` wiring.
+
+Next steps:
+- Embedded HTTP/SSE MCP transport inside Electron so semantic vector retrieval is available to MCP clients while Obi is running.
+- Optional OCR/caption inlining for image items in the bundle.
+- File-export / "save bundle as .md" UI action.
+
+Out of scope for v1: multi-repo federation, remote sync, write-back from Cursor.
+
 ## How Data Flows
 
 1. Ingest files from selected folders or manually picked files.
@@ -145,6 +164,8 @@ Suggested one-liner:
 - App setup and platform notes: [`local-rag/README.md`](local-rag/README.md)
 - Focus mode technical notes: [`local-rag/TECHNICAL_NOTES_FOCUS_MODE.md`](local-rag/TECHNICAL_NOTES_FOCUS_MODE.md)
 - Hackathon overview: [`local-rag/HACKATHON_TECH_OVERVIEW.txt`](local-rag/HACKATHON_TECH_OVERVIEW.txt)
+- Design notes / honest review / future work / CS 298 generation–verification gap / verifier agents: [`local-rag/DESIGN_NOTES.md`](local-rag/DESIGN_NOTES.md)
+- Cursor MCP server (stdio): [`local-rag/mcp-server/README.md`](local-rag/mcp-server/README.md)
 
 
 <img width="806" height="537" alt="gallery" src="https://github.com/user-attachments/assets/aae8caf6-4514-4d5b-8f52-538bb97ffb90" />
@@ -168,6 +189,7 @@ thaT IS OUR MAIN TYOUYURB VIDEO LINK
 
 ## Recruiter Snapshot
 
+- Currently implementing: Cursor context handoff (retrieval -> context packer -> adapter).
 - Built a local-first AI context system for project-aware development workflows.
 - Implemented hybrid retrieval over mixed file types, including OCR-backed image support.
 - Designed toward assistant handoff: retrieve once, send compact context, avoid repeated full-repo scans.

@@ -2,7 +2,13 @@ import fs from "node:fs"
 import path from "node:path"
 import { getDb } from "./database"
 import { SearchResult } from "../src/types/global"
-import { IndexedModality, IndexingOptions, IndexingRules } from "./indexingRules"
+import {
+    IndexedModality,
+    IndexingOptions,
+    IndexingRules,
+    resolveFileModality,
+    shouldChunkAsCode,
+} from "./indexingRules"
 
 type EmbedOneFn = (text: string) => Promise<number[]>
 type EmbedManyFn = (texts: string[]) => Promise<number[][]>
@@ -82,7 +88,9 @@ export class VectorStore {
 
     async indexFile(filePath: string, modality?: IndexedModality) {
         this.stats.scanned += 1
-        const indexedModality = modality ?? inferModality(filePath)
+        const indexedModality =
+            modality ??
+            resolveFileModality(filePath, { includeCodeFiles: true, indexAllFiles: false })
         if (!indexedModality) {
             this.recordSkipEvent(filePath, "unsupported_modality", null)
             return { skipped: true as const, reason: "unsupported_modality" as const }
@@ -495,7 +503,10 @@ export class VectorStore {
         let textIndexed = 0
         let codeIndexed = 0
         for (const row of textAndCodeRows) {
-            const modality = inferModality(row.path)
+            const modality = resolveFileModality(row.path, {
+                includeCodeFiles: true,
+                indexAllFiles: false,
+            })
             if (modality === "code") {
                 codeIndexed += 1
             } else {
@@ -524,7 +535,8 @@ export class VectorStore {
                 file_name,
                 indexed_at_ms,
                 updated_at_ms,
-                modality
+                index_count,
+                kind
             FROM (
                 SELECT
                     d.path AS path,
@@ -532,31 +544,7 @@ export class VectorStore {
                     d.indexed_at_ms AS indexed_at_ms,
                     d.updated_at_ms AS updated_at_ms,
                     COALESCE(d.index_count, 1) AS index_count,
-                    CASE
-                        WHEN lower(d.path) GLOB '*.ts'
-                          OR lower(d.path) GLOB '*.tsx'
-                          OR lower(d.path) GLOB '*.js'
-                          OR lower(d.path) GLOB '*.jsx'
-                          OR lower(d.path) GLOB '*.py'
-                          OR lower(d.path) GLOB '*.java'
-                          OR lower(d.path) GLOB '*.go'
-                          OR lower(d.path) GLOB '*.rs'
-                          OR lower(d.path) GLOB '*.c'
-                          OR lower(d.path) GLOB '*.cpp'
-                          OR lower(d.path) GLOB '*.h'
-                          OR lower(d.path) GLOB '*.hpp'
-                          OR lower(d.path) GLOB '*.css'
-                          OR lower(d.path) GLOB '*.scss'
-                          OR lower(d.path) GLOB '*.html'
-                          OR lower(d.path) GLOB '*.xml'
-                          OR lower(d.path) GLOB '*.json'
-                          OR lower(d.path) GLOB '*.yaml'
-                          OR lower(d.path) GLOB '*.yml'
-                          OR lower(d.path) GLOB '*.toml'
-                          OR lower(d.path) GLOB '*.sql'
-                        THEN 'code'
-                        ELSE 'text'
-                    END AS modality
+                    'doc' AS kind
                 FROM documents d
                 UNION ALL
                 SELECT
@@ -565,7 +553,7 @@ export class VectorStore {
                     i.indexed_at_ms AS indexed_at_ms,
                     i.updated_at_ms AS updated_at_ms,
                     COALESCE(i.index_count, 1) AS index_count,
-                    'image' AS modality
+                    'image' AS kind
                 FROM image_documents i
             )
             ORDER BY indexed_at_ms DESC
@@ -576,17 +564,26 @@ export class VectorStore {
             indexed_at_ms: number
             updated_at_ms: number
             index_count: number
-            modality: "text" | "code" | "image"
+            kind: "doc" | "image"
         }>
 
-        return rows.map((row) => ({
-            path: row.path,
-            fileName: row.file_name,
-            indexedAtMs: Number(row.indexed_at_ms ?? 0),
-            updatedAtMs: Number(row.updated_at_ms ?? 0),
-            indexCount: Number(row.index_count ?? 1),
-            modality: row.modality,
-        }))
+        return rows.map((row) => {
+            const modality =
+                row.kind === "image"
+                    ? ("image" as const)
+                    : resolveFileModality(row.path, {
+                          includeCodeFiles: true,
+                          indexAllFiles: false,
+                      }) ?? ("text" as const)
+            return {
+                path: row.path,
+                fileName: row.file_name,
+                indexedAtMs: Number(row.indexed_at_ms ?? 0),
+                updatedAtMs: Number(row.updated_at_ms ?? 0),
+                indexCount: Number(row.index_count ?? 1),
+                modality: modality === "image" ? "image" : modality === "code" ? "code" : "text",
+            }
+        })
     }
 
     getRecentSkipEvents(limit = 100) {
@@ -718,6 +715,13 @@ async function safeReadTextFile(filePath: string) {
     return fs.readFileSync(filePath, "utf8")
 }
 
+/** Shown in the index when pdf-parse finds no text layer (scanned / image-only PDFs). */
+const PDF_NO_EXTRACTABLE_TEXT_FOOTER =
+    "\n\n[Obi PDF note: No selectable text was extracted from this file. " +
+    "Many tax and government PDFs are scanned images, so the index only has the filename and this message until you OCR or export text and re-index.]"
+
+const PDF_MIN_USEFUL_TEXT_CHARS = 32
+
 function buildPdfIndexText(filePath: string, extractedText: string): string {
     const fileName = path.basename(filePath)
     const stem = fileName.replace(/\.pdf$/i, "")
@@ -731,7 +735,10 @@ function buildPdfIndexText(filePath: string, extractedText: string): string {
     const body = extractedText.trim()
 
     // Keep lightweight metadata so scanned/image-only PDFs remain searchable by name/type.
-    if (!body) return metadataLine
+    if (!body) return `${metadataLine}${PDF_NO_EXTRACTABLE_TEXT_FOOTER}`
+    if (body.length < PDF_MIN_USEFUL_TEXT_CHARS) {
+        return `${metadataLine}\n\n${body}${PDF_NO_EXTRACTABLE_TEXT_FOOTER}`
+    }
     if (body.toLowerCase().includes("pdf")) return `${metadataLine}\n\n${body}`
     return `${metadataLine}\n\npdf\n\n${body}`
 }
@@ -767,20 +774,12 @@ function serializeVector(vector: number[]): Buffer {
     return Buffer.from(new Float32Array(vector).buffer)
 }
 
-function inferModality(filePath: string): IndexedModality | null {
-    const extension = path.extname(filePath).toLowerCase()
-    if ([".pdf", ".txt", ".md", ".mdx", ".json", ".csv", ".yaml", ".yml", ".toml", ".xml", ".log", ".ini", ".sql"].includes(extension)) return "text"
-    if ([".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".go", ".rs", ".c", ".cpp", ".h", ".hpp", ".cs", ".rb"].includes(extension)) return "code"
-    if ([".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) return "image"
-    return null
-}
-
 function chunkTextWithMetadata(filePath: string, text: string, chunkSize: number, overlap: number): ChunkWithMeta[] {
     const extension = path.extname(filePath).toLowerCase()
     if (extension === ".md" || extension === ".mdx") {
         return chunkMarkdownText(text, chunkSize, overlap)
     }
-    if ([".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".go", ".rs", ".c", ".cpp", ".h", ".hpp", ".cs", ".rb"].includes(extension)) {
+    if (shouldChunkAsCode(filePath)) {
         return chunkCodeText(text, chunkSize, overlap)
     }
     return chunkText(text, chunkSize, overlap)

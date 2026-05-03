@@ -30,7 +30,7 @@ function FileWatcherPicker({ onIndexingUpdated }: FileWatcherPickerProps) {
         setFileIndexSummary(null);
         setFileIndexDetails([]);
         try {
-            const result = await window.watcher.pickDirectory({ includeCodeFiles: false, indexAllFiles: false }, addToExisting);
+            const result = await window.watcher.pickDirectory({ includeCodeFiles: true, indexAllFiles: false }, addToExisting);
             if (!result.canceled && result.path) {
                 setWatchedPaths(result.rootPaths ?? (result.rootPath ? [result.rootPath] : []));
                 setStats(result.indexingStats);
