@@ -7,7 +7,7 @@
 **Local-first project context engine for developers.**
 Index your code and files, retrieve only what matters, and feed high-signal context into your AI workflows.
 
-[Demo Video](https://www.youtube.com/watch?v=r7eSFDm4Wd4) · [Primary Repo](https://github.com/himavanthkar/Personal_Vault) · [Showcase Repo](https://github.com/himavanthkar/Local-First-Multimodal-File-Index-via-MCP) · [Storyboard](https://sadly-camp-78163766.figma.site)
+[Demo Video](https://www.youtube.com/watch?v=r7eSFDm4Wd4)  · [Storyboard](https://sadly-camp-78163766.figma.site)
 
 </div>
 
