@@ -131,8 +131,7 @@ Obi is connected to ongoing research on retrieval quality, context efficiency, a
 
 > Obi evaluates whether local, intent-aware retrieval can improve assistant response quality while reducing token and context overhead.
 
-- Thesis / write-up: `[Add thesis URL here]`
-- Grad Slam page: `[Add Grad Slam URL here]`
+
 
 ---
 
